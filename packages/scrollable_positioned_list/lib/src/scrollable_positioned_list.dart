@@ -51,6 +51,7 @@ class ScrollablePositionedList extends StatefulWidget {
     this.addAutomaticKeepAlives = true,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
+    this.scrollCallback,
   })  : assert(itemCount != null),
         assert(itemBuilder != null),
         itemPositionsNotifier = itemPositionsListener as ItemPositionsNotifier?,
@@ -78,6 +79,7 @@ class ScrollablePositionedList extends StatefulWidget {
     this.addAutomaticKeepAlives = true,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
+    this.scrollCallback,
   })  : assert(itemCount != null),
         assert(itemBuilder != null),
         assert(separatorBuilder != null),
@@ -171,6 +173,8 @@ class ScrollablePositionedList extends StatefulWidget {
   /// cache extent.
   final double? minCacheExtent;
 
+  final Function(double)? scrollCallback;
+
   @override
   State<StatefulWidget> createState() => _ScrollablePositionedListState();
 }
@@ -201,8 +205,10 @@ class ItemScrollController {
   /// * 0 aligns the left edge of the item with the left edge of the view
   /// * 1 aligns the left edge of the item with the right edge of the view.
   /// * 0.5 aligns the left edge of the item with the center of the view.
-  void jumpTo({required int index, double alignment = 0}) {
-    _scrollableListState!._jumpTo(index: index, alignment: alignment);
+  void jumpTo(
+      {required int index, double alignment = 0, double extraOffset = 0}) {
+    _scrollableListState!
+        ._jumpTo(index: index, alignment: alignment, extraOffset: extraOffset);
   }
 
   /// Animate the list over [duration] using the given [curve] such that the
@@ -232,6 +238,7 @@ class ItemScrollController {
     required Duration duration,
     Curve curve = Curves.linear,
     List<double> opacityAnimationWeights = const [40, 20, 40],
+    double extraOffset = 0,
   }) {
     assert(_scrollableListState != null);
     assert(opacityAnimationWeights.length == 3);
@@ -242,6 +249,7 @@ class ItemScrollController {
       duration: duration,
       curve: curve,
       opacityAnimationWeights: opacityAnimationWeights,
+      extraOffset: extraOffset,
     );
   }
 
@@ -273,6 +281,13 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
   @override
   void initState() {
     super.initState();
+    primary.scrollController.addListener(() {
+      widget.scrollCallback?.call(primary.scrollController.offset);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+      primary.scrollController.jumpTo(200);
+    });
+    //primary.scrollController.animateTo(offset, duration: duration, curve: curve)
     ItemPosition? initialPosition = PageStorage.of(context)!.readState(context);
     primary.target = initialPosition?.index ?? widget.initialScrollIndex;
     primary.alignment =
@@ -411,13 +426,14 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
         widget.minCacheExtent ?? 0,
       );
 
-  void _jumpTo({required int index, required double alignment}) {
+  void _jumpTo(
+      {required int index, required double alignment, double extraOffset = 0}) {
     _stopScroll(canceled: true);
     if (index > widget.itemCount - 1) {
       index = widget.itemCount - 1;
     }
     setState(() {
-      primary.scrollController.jumpTo(0);
+      primary.scrollController.jumpTo(extraOffset);
       primary.target = index;
       primary.alignment = alignment;
     });
@@ -429,6 +445,7 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
     required Duration duration,
     Curve curve = Curves.linear,
     required List<double> opacityAnimationWeights,
+    double extraOffset = 0,
   }) async {
     if (index > widget.itemCount - 1) {
       index = widget.itemCount - 1;
@@ -442,6 +459,7 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
           duration: duration,
           curve: curve,
           opacityAnimationWeights: opacityAnimationWeights,
+          extraOffset: extraOffset,
         );
       });
     } else {
@@ -451,6 +469,7 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
         duration: duration,
         curve: curve,
         opacityAnimationWeights: opacityAnimationWeights,
+        extraOffset: extraOffset,
       );
     }
   }
@@ -461,6 +480,7 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
     required Duration duration,
     Curve curve = Curves.linear,
     required List<double> opacityAnimationWeights,
+    double extraOffset = 0,
   }) async {
     final direction = index > primary.target ? 1 : -1;
     final itemPosition = primary.itemPositionsNotifier.itemPositions.value
@@ -471,11 +491,13 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
       final localScrollAmount = itemPosition.itemLeadingEdge *
           primary.scrollController.position.viewportDimension;
       await primary.scrollController.animateTo(
-          primary.scrollController.offset +
-              localScrollAmount -
-              alignment * primary.scrollController.position.viewportDimension,
-          duration: duration,
-          curve: curve);
+        primary.scrollController.offset +
+            localScrollAmount -
+            alignment * primary.scrollController.position.viewportDimension +
+            extraOffset,
+        duration: duration,
+        curve: curve,
+      );
     } else {
       final scrollAmount = _screenScrollCount *
           primary.scrollController.position.viewportDimension;
@@ -494,7 +516,9 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
                       secondary.scrollController.position.viewportDimension));
 
           startCompleter.complete(primary.scrollController.animateTo(
-              primary.scrollController.offset + direction * scrollAmount,
+              primary.scrollController.offset +
+                  direction * scrollAmount +
+                  extraOffset,
               duration: duration,
               curve: curve));
           endCompleter.complete(secondary.scrollController
