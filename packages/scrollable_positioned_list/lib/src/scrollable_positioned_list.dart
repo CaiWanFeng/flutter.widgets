@@ -284,9 +284,6 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
     primary.scrollController.addListener(() {
       widget.scrollCallback?.call(primary.scrollController.offset);
     });
-    WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-      primary.scrollController.jumpTo(200);
-    });
     //primary.scrollController.animateTo(offset, duration: duration, curve: curve)
     ItemPosition? initialPosition = PageStorage.of(context)!.readState(context);
     primary.target = initialPosition?.index ?? widget.initialScrollIndex;
